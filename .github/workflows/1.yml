@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="StudioAI">
+    
+    <title>Studio AI Vision - 本地专业版</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Noto+Serif+SC:wght@400;700&display=swap');
+        
+        :root {
+            --studio-bg: #000000;
+            --studio-card: #1c1c1e;
+            --studio-text: #ffffff;
+            --accent-gold: #d4af37;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--studio-bg);
+            color: var(--studio-text);
+            padding-bottom: env(safe-area-inset-bottom);
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .masonry {
+            column-count: 2;
+            column-gap: 0.75rem;
+            padding: 0.75rem;
+        }
+        @media (min-width: 768px) { .masonry { column-count: 3; } }
+
+        .photo-card {
+            break-inside: avoid;
+            margin-bottom: 0.75rem;
+            background: var(--studio-card);
+            border: 1px solid #2c2c2e;
+            transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .photo-card:active {
+            transform: scale(0.96);
+        }
+
+        #modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: #000;
+            padding-top: env(safe-area-inset-top);
+        }
+
+        /* 本地滤镜算法定义 */
+        .filter-none { filter: none; }
+        .filter-fuji { filter: sepia(0.1) contrast(1.1) saturate(1.1) hue-rotate(-5deg) brightness(1.02); }
+        .filter-cine { filter: contrast(1.2) saturate(0.85) hue-rotate(-15deg) brightness(0.95) sepia(0.1); }
+        .filter-bw { filter: grayscale(1) contrast(1.5) brightness(0.9); }
+        .filter-soft { filter: brightness(1.1) saturate(0.9) contrast(0.9) blur(1px); }
+
+        .ios-nav {
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: saturate(180%) blur(20px);
+            -webkit-backdrop-filter: saturate(180%) blur(20px);
+            padding-top: env(safe-area-inset-top);
+        }
+
+        .custom-scrollbar::-webkit-scrollbar { width: 0px; }
+    </style>
+</head>
+<body class="antialiased">
+
+    <nav class="sticky top-0 z-50 ios-nav border-b border-white/10 px-4 py-3 flex justify-between items-center">
+        <div>
+            <h1 class="text-sm font-bold tracking-widest text-white">STUDIO <span class="text-amber-500">LITE</span></h1>
+        </div>
+        
+        <div class="flex items-center gap-2">
+            <select id="batchFilterSelect" class="bg-white/10 text-[10px] text-stone-300 rounded-md px-2 py-1.5 outline-none border-none">
+                <option value="none">无滤镜</option>
+                <option value="fuji">富士胶片</option>
+                <option value="cine">电影质感</option>
+                <option value="bw">经典黑白</option>
+                <option value="soft">人像柔焦</option>
+            </select>
+            <button onclick="exportAll()" class="bg-amber-600/20 text-amber-500 px-3 py-1.5 rounded-full text-[10px] font-bold border border-amber-500/30">
+                批量导出
+            </button>
+            <label for="upload" class="bg-white text-black px-4 py-1.5 rounded-full text-[10px] font-bold active:bg-stone-300">
+                导入
+            </label>
+            <input type="file" id="upload" class="hidden" multiple accept="image/*">
+        </div>
+    </nav>
+
+    <main class="max-w-[1200px] mx-auto">
+        <div class="p-4 pt-6 flex justify-between items-end">
+            <div>
+                <h2 class="text-2xl font-semibold mb-1">影像资产 <span id="photoCount" class="text-amber-500 font-mono text-lg">00</span></h2>
+                <p class="text-stone-500 text-[10px] uppercase tracking-widest">本地高性能处理模式</p>
+            </div>
+            <button onclick="clearGallery()" class="text-stone-600 text-[10px] uppercase font-bold p-2">清空图库</button>
+        </div>
+
+        <div id="gallery" class="masonry"></div>
+
+        <div id="emptyState" class="flex flex-col items-center justify-center py-40">
+            <div class="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-stone-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4" /></svg>
+            </div>
+            <p class="text-stone-600 text-[10px] tracking-widest uppercase">点击右上角导入照片</p>
+        </div>
+    </main>
+
+    <!-- 模态框：精修预览 -->
+    <div id="modal">
+        <div class="flex flex-col h-full overflow-hidden">
+            <div class="px-4 py-3 flex justify-between items-center border-b border-white/5">
+                <span id="modalFilename" class="text-[10px] font-mono text-stone-500 truncate max-w-[200px]">FILE_NAME</span>
+                <button onclick="closeModal()" class="text-white text-lg p-2">&times;</button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto custom-scrollbar flex flex-col">
+                <div class="p-4 flex-shrink-0">
+                    <div class="relative rounded-lg overflow-hidden bg-zinc-900 shadow-2xl">
+                        <img id="modalImg" src="" class="w-full h-auto filter-none" alt="Preview">
+                    </div>
+                </div>
+
+                <div class="p-4 space-y-6">
+                    <div>
+                        <p class="text-[10px] text-stone-500 uppercase tracking-[0.2em] mb-3">滤镜预设</p>
+                        <div class="grid grid-cols-5 gap-2">
+                            <button onclick="applyFilter('none')" class="text-[9px] py-3 bg-white/5 rounded-lg active:bg-white/10">原图</button>
+                            <button onclick="applyFilter('fuji')" class="text-[9px] py-3 bg-white/5 rounded-lg active:bg-white/10">富士</button>
+                            <button onclick="applyFilter('cine')" class="text-[9px] py-2 bg-white/5 rounded-lg active:bg-white/10">电影</button>
+                            <button onclick="applyFilter('bw')" class="text-[9px] py-2 bg-white/5 rounded-lg active:bg-white/10">黑白</button>
+                            <button onclick="applyFilter('soft')" class="text-[9px] py-2 bg-white/5 rounded-lg active:bg-white/10">柔焦</button>
+                        </div>
+                    </div>
+
+                    <button onclick="exportSingle()" class="w-full py-4 bg-white text-black rounded-xl text-xs font-bold shadow-lg active:bg-stone-200">
+                        导出当前修图
+                    </button>
+                    
+                    <p class="text-center text-[9px] text-stone-600 px-10">
+                        提示：由于 iOS 安全机制，导出后请长按图片选择“保存到照片”
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 批处理进度 -->
+    <div id="batchOverlay" class="fixed inset-0 z-[2000] bg-black/95 hidden flex flex-col items-center justify-center">
+        <div class="w-48 h-1 bg-zinc-800 rounded-full overflow-hidden mb-4">
+            <div id="batchProgress" class="h-full bg-amber-500 w-0 transition-all duration-300"></div>
+        </div>
+        <p id="batchStatus" class="text-[10px] font-mono text-stone-400 uppercase tracking-widest">处理中 0%</p>
+    </div>
+
+    <canvas id="exportCanvas" style="display:none;"></canvas>
+
+    <script>
+        let photos = [];
+        let activeIdx = null;
+
+        // 滤镜配置
+        const FILTER_CONFIG = {
+            'none': 'none',
+            'fuji': 'sepia(10%) contrast(110%) saturate(110%) hue-rotate(-5deg) brightness(102%)',
+            'cine': 'contrast(120%) saturate(85%) hue-rotate(-15deg) brightness(95%) sepia(10%)',
+            'bw': 'grayscale(100%) contrast(150%) brightness(90%)',
+            'soft': 'brightness(110%) saturate(95%) contrast(90%) blur(2px)'
+        };
+
+        document.getElementById('upload').addEventListener('change', (e) => {
+            const files = Array.from(e.target.files);
+            files.forEach(file => {
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    photos.push({ 
+                        id: Date.now() + Math.random(), 
+                        src: ev.target.result, 
+                        name: file.name,
+                        type: file.type 
+                    });
+                    render();
+                };
+                reader.readAsDataURL(file);
+            });
+        });
+
+        function render() {
+            const gallery = document.getElementById('gallery');
+            gallery.innerHTML = '';
+            document.getElementById('emptyState').style.display = photos.length ? 'none' : 'flex';
+            document.getElementById('photoCount').innerText = photos.length.toString().padStart(2, '0');
+
+            photos.forEach((p, i) => {
+                const div = document.createElement('div');
+                div.className = 'photo-card animate__animated animate__fadeIn';
+                div.innerHTML = `
+                    <img src="${p.src}" class="w-full h-auto" onclick="openModal(${i})">
+                    <div class="p-2 flex justify-between items-center text-[8px] text-stone-500">
+                        <span class="truncate pr-2">${p.name}</span>
+                        <button onclick="remove(${p.id})" class="text-red-900 font-bold px-2">移除</button>
+                    </div>`;
+                gallery.appendChild(div);
+            });
+        }
+
+        function remove(id) { 
+            photos = photos.filter(p => p.id !== id); 
+            render(); 
+        }
+
+        function openModal(i) {
+            activeIdx = i;
+            document.getElementById('modal').style.display = 'block';
+            document.getElementById('modalImg').src = photos[i].src;
+            document.getElementById('modalFilename').innerText = photos[i].name;
+            applyFilter('none');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeModal() { 
+            document.getElementById('modal').style.display = 'none'; 
+            document.body.style.overflow = 'auto';
+        }
+
+        function applyFilter(filter) {
+            const img = document.getElementById('modalImg');
+            img.className = 'w-full h-auto transition-all duration-300 filter-' + filter;
+        }
+
+        async function processImage(imgSrc, filterKey) {
+            return new Promise((resolve) => {
+                const canvas = document.getElementById('exportCanvas');
+                const ctx = canvas.getContext('2d');
+                const img = new Image();
+                img.onload = () => {
+                    canvas.width = img.naturalWidth;
+                    canvas.height = img.naturalHeight;
+                    ctx.filter = FILTER_CONFIG[filterKey] || 'none';
+                    ctx.drawImage(img, 0, 0);
+                    resolve(canvas.toDataURL('image/jpeg', 0.9));
+                };
+                img.src = imgSrc;
+            });
+        }
+
+        async function exportSingle() {
+            const currentFilter = document.getElementById('modalImg').className.match(/filter-(\w+)/)[1];
+            const dataUrl = await processImage(photos[activeIdx].src, currentFilter);
+            
+            // iOS 兼容性导出逻辑
+            const win = window.open();
+            win.document.write(`
+                <body style="margin:0; background:#000; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh;">
+                    <p style="color:#fff; font-size:14px; margin-bottom:20px; font-family:sans-serif;">长按下方图片保存到相册</p>
+                    <img src="${dataUrl}" style="max-width:100%; max-height:80%;">
+                    <button onclick="window.close()" style="margin-top:30px; background:#333; color:#fff; border:none; padding:10px 30px; border-radius:20px;">返回</button>
+                </body>
+            `);
+        }
+
+        async function exportAll() {
+            if (!photos.length) return;
+            const batchFilter = document.getElementById('batchFilterSelect').value;
+            const overlay = document.getElementById('batchOverlay');
+            const progress = document.getElementById('batchProgress');
+            const status = document.getElementById('batchStatus');
+            
+            overlay.classList.remove('hidden');
+            
+            for (let i = 0; i < photos.length; i++) {
+                const dataUrl = await processImage(photos[i].src, batchFilter);
+                const link = document.createElement('a');
+                link.download = `Studio_${batchFilter}_${photos[i].name}`;
+                link.href = dataUrl;
+                link.click();
+                
+                const p = Math.round(((i + 1) / photos.length) * 100);
+                progress.style.width = p + '%';
+                status.innerText = `批量导出中 ${p}%`;
+                
+                // 给予浏览器 UI 响应时间
+                await new Promise(r => setTimeout(r, 100));
+            }
+            
+            setTimeout(() => {
+                overlay.classList.add('hidden');
+                progress.style.width = '0%';
+            }, 500);
+        }
+
+        function clearGallery() {
+            if(confirm('确定清空所有照片吗？')) {
+                photos = [];
+                render();
+            }
+        }
+    </script>
+</body>
+</html>
